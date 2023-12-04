@@ -5,6 +5,7 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
     if !path.is_absolute() { panic!("For now path must be absolute"); }
     // VALIDATE CHARACTERS IN PATH. INVALID PATH CHARACTERS CAN MESS UP THE REGEX
     // Specifically, replace the . in paths with a regex literal .
+    // For symlinks, try to canonicalize each component?
 
     dbg!(path);
 
@@ -19,7 +20,9 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
         if fin.is_empty() { return Some(fin); }
 
         if pe.to_str().unwrap().contains("*") {
-            let re = Regex::new(&pe.to_str().unwrap().replace("*", ".*")).unwrap();
+            let re_string = format!("^{}$", &pe.to_str().unwrap().replace("*", ".*"));
+            dbg!(&re_string);
+            let re = Regex::new(&re_string).unwrap();
             let mut new_paths: Vec<PathBuf> = Vec::new();
 
             dbg!(pe);
@@ -34,7 +37,7 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
             // then shared code does appending for every item in that list
             for p in &fin {
                 let regex_filter = |x: PathBuf| -> Option<PathBuf> {
-                    if re.is_match(x.to_str().unwrap()) {
+                    if re.is_match(x.iter().last().unwrap().to_str().unwrap()) {
                         dbg!(&x);
                         return Some(p.join(x))
                     } else {
@@ -151,6 +154,7 @@ mod tests {
         );
 
         paths.push(tdr.join("YB"));
+        paths.push(tdr.join("YX"));
         for p in paths {
             _ = fs::create_dir(p);
         }
@@ -163,45 +167,52 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn double_compund() {
-    //     let tdr = test_setup();
-    //     let test_input = tdr.clone().join("X*").join("Y").join("*Z");
+    #[test]
+    fn double_compund() {
+        let tdr = test_setup();
+        let test_input = tdr.clone().join("X*").join("Y").join("*Z");
 
-    //     let first_layer: Vec<PathBuf> = vec![
-    //         tdr.join("X"),
-    //         tdr.join("XA"),
-    //         tdr.join("YB")
-    //     ];
-    //     for p in &first_layer { _ = fs::create_dir(p); }
+        let first_layer: Vec<PathBuf> = vec![
+            tdr.join("X"),
+            tdr.join("XA"),
+            tdr.join("YB"),
+            tdr.join("YX"),
+        ];
+        for p in &first_layer { _ = fs::create_dir(p); }
 
-    //     let second_layer: Vec<PathBuf> = vec![
-    //         tdr.join("X").join("Y"),
-    //         tdr.join("X").join("TY"),
-    //         tdr.join("XA").join("Y"),
-    //         tdr.join("YB").join("Y")
-    //     ];
-    //     for p in &second_layer { _ = fs::create_dir(p); }
+        let second_layer: Vec<PathBuf> = vec![
+            tdr.join("X").join("Y"),
+            tdr.join("X").join("TY"),
+            tdr.join("XA").join("Y"),
+            tdr.join("YB").join("Y")
+        ];
+        for p in &second_layer { _ = fs::create_dir(p); }
 
-    //     let mut third_layer: Vec<PathBuf> = vec![
-    //         tdr.join("X").join("Y").join("Z"),
-    //         tdr.join("XA").join("Y").join("TZ"),
-    //     ];
+        let mut third_layer: Vec<PathBuf> = vec![
+            tdr.join("X").join("Y").join("Z"),
+            tdr.join("XA").join("Y").join("Z"),
+            tdr.join("XA").join("Y").join("TZ"),
+            tdr.join("XA").join("Y").join("ZAZ"),
+            tdr.join("XA").join("Y").join("ZZZ"),
+        ];
 
-    //     let solution = third_layer.clone();
+        let mut solution = third_layer.clone();
+        solution.sort_by_key(
+            |k| k.as_os_str().to_owned()
+        );
 
-    //     third_layer.push(tdr.join("X").join("TY").join("Z"));
-    //     third_layer.push(tdr.join("X").join("TY").join("Z"));
+        third_layer.push(tdr.join("X").join("Y").join("z"));
+        third_layer.push(tdr.join("X").join("TY").join("Z"));
+        third_layer.push(tdr.join("XA").join("Y").join("ZA"));
 
-    //     for p in &third_layer { _ = fs::create_dir(p); }
+        for p in &third_layer { _ = fs::create_dir(p); }
+
+        assert_eq!(
+            resolve(&test_input).unwrap(),
+            solution
+        );
 
 
-
-    //     for p in vec![tdr.join("X").join("Y"), tdr.join("XA").join("Y"), tdr.join("YB").join("Y")] {
-    //         _ = fs::create_dir(p);
-    //     }
-
-
-    //     // match OpenOptions::new().create(true).write(true).open(path) {
-    // }
+        // match OpenOptions::new().create(true).write(true).open(path) {
+    }
 }
