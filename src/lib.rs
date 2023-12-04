@@ -3,6 +3,8 @@ use regex::Regex;
 
 pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
     if !path.is_absolute() { panic!("For now path must be absolute"); }
+    // VALIDATE CHARACTERS IN PATH. INVALID PATH CHARACTERS CAN MESS UP THE REGEX
+    // Specifically, replace the . in paths with a regex literal .
 
     dbg!(path);
 
@@ -17,9 +19,19 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
         if fin.is_empty() { return Some(fin); }
 
         if pe.to_str().unwrap().contains("*") {
-            let re = Regex::new(&pe.to_str().unwrap().replace("*", ".+")).unwrap();
+            let re = Regex::new(&pe.to_str().unwrap().replace("*", ".*")).unwrap();
             let mut new_paths: Vec<PathBuf> = Vec::new();
 
+            dbg!(pe);
+            dbg!(&fin);
+            // let u: Vec<PathBuf> = read_dir(&fin[0]).unwrap().map(|x| x.unwrap().path()).collect();
+            // dbg!(u);
+
+
+            // could collapse the * and non-* into the same code
+            // if statement creates a list of all valid new items (for each thing already in fin)
+            // in the non-* case, this will just be one entry
+            // then shared code does appending for every item in that list
             for p in &fin {
                 let regex_filter = |x: PathBuf| -> Option<PathBuf> {
                     if re.is_match(x.to_str().unwrap()) {
@@ -36,6 +48,7 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
                 dbg!(&items);
                 new_paths.append(&mut items);
                 
+                // MAYBE REPLACE THIS WITH A SINGLE FIN = FIN.FILTER LIKE IN THE OTHER CASE
             }
             fin = new_paths;
 
@@ -50,6 +63,10 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
         }
     }
 
+    fin.sort_by_key(
+        |k| k.as_os_str().to_owned()
+    );
+    
     Some(fin)
 }
 
@@ -57,13 +74,14 @@ pub fn resolve(path: &Path) -> Option<Vec<PathBuf>> {
 mod tests {
     use super::*;
     use rand::distributions::{Alphanumeric, DistString};
+    use std::fs;
 
     fn test_setup() -> PathBuf {
         let test_dir = Alphanumeric.sample_string(&mut rand::thread_rng(), 16);
 
-        let mut tdr = std::env::temp_dir();
+        let mut tdr = std::env::temp_dir(); // THIS DOESN'T DELETE AFTER RUNNING????
         tdr.push(test_dir);
-        _ = std::fs::create_dir(&tdr);
+        _ = fs::create_dir(&tdr);
 
         tdr
     }
@@ -71,21 +89,119 @@ mod tests {
     #[test]
     fn ending_asterisk() {
         let tdr = test_setup();
+        let test_path = tdr.clone().join("*");
 
-        let test_paths: Vec<PathBuf> = vec![
+        let mut solution: Vec<PathBuf> = vec![
             tdr.join("A"),
             tdr.join("B"),
         ];
-        // _ = test_paths.iter().map(|x| std::fs::create_dir(x));
-        for p in &test_paths {
-            _ = std::fs::create_dir(p);
+        solution.sort_by_key(
+            |k| k.as_os_str().to_owned()
+        );
+
+        for p in &solution {
+            _ = fs::create_dir(p);
         }
         
-        let test_path = tdr.clone().join("*");
-
         assert_eq!(
             resolve(&test_path).unwrap(),
-            test_paths
+            solution
         );
     }
+
+    #[test]
+    fn double_asterisk() {
+        let tdr = test_setup();
+        let test_input = tdr.clone().join("*").join("*");
+
+        _ = fs::create_dir(tdr.join("A"));
+        _ = fs::create_dir(tdr.join("B"));
+
+        let mut solution: Vec<PathBuf> = vec![
+            tdr.join("A").join("C"),
+            tdr.join("B").join("D"),
+        ];
+        solution.sort_by_key(
+            |k| k.as_os_str().to_owned()
+        );
+
+        for p in &solution {
+            _ = fs::create_dir(p);
+        }
+        
+        assert_eq!(
+            resolve(&test_input).unwrap(),
+            solution
+        );
+    }
+
+    #[test]
+    fn not_all_items() {
+        let tdr = test_setup();
+        let test_input = tdr.clone().join("X*");
+
+        let mut paths: Vec<PathBuf> = vec![
+            tdr.join("XA"),
+            tdr.join("X")
+        ];
+
+        let mut solution = paths.clone();
+        solution.sort_by_key(
+            |k| k.as_os_str().to_owned()
+        );
+
+        paths.push(tdr.join("YB"));
+        for p in paths {
+            _ = fs::create_dir(p);
+        }
+
+        dbg!(&solution);
+
+        assert_eq!(
+            resolve(&test_input).unwrap(),
+            solution
+        );
+    }
+
+    // #[test]
+    // fn double_compund() {
+    //     let tdr = test_setup();
+    //     let test_input = tdr.clone().join("X*").join("Y").join("*Z");
+
+    //     let first_layer: Vec<PathBuf> = vec![
+    //         tdr.join("X"),
+    //         tdr.join("XA"),
+    //         tdr.join("YB")
+    //     ];
+    //     for p in &first_layer { _ = fs::create_dir(p); }
+
+    //     let second_layer: Vec<PathBuf> = vec![
+    //         tdr.join("X").join("Y"),
+    //         tdr.join("X").join("TY"),
+    //         tdr.join("XA").join("Y"),
+    //         tdr.join("YB").join("Y")
+    //     ];
+    //     for p in &second_layer { _ = fs::create_dir(p); }
+
+    //     let mut third_layer: Vec<PathBuf> = vec![
+    //         tdr.join("X").join("Y").join("Z"),
+    //         tdr.join("XA").join("Y").join("TZ"),
+    //     ];
+
+    //     let solution = third_layer.clone();
+
+    //     third_layer.push(tdr.join("X").join("TY").join("Z"));
+    //     third_layer.push(tdr.join("X").join("TY").join("Z"));
+
+    //     for p in &third_layer { _ = fs::create_dir(p); }
+
+
+
+    //     for p in vec![tdr.join("X").join("Y"), tdr.join("XA").join("Y"), tdr.join("YB").join("Y")] {
+    //         _ = fs::create_dir(p);
+    //     }
+
+
+    //     // match OpenOptions::new().create(true).write(true).open(path) {
+    // }
 }
